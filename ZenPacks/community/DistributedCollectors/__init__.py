@@ -17,6 +17,11 @@ import logging
 import fileinput
 from time import strftime
 try:
+    from Products.Jobber.jobs import SubprocessJob
+except:
+    pass
+
+try:
     from Products.ZenUI3.browser.streaming import StreamingView
     from Products.ZenUtils.jsonutils import unjson, json
 except ImportError:
@@ -243,16 +248,22 @@ def _executeZenModelerCommand(self, zenmodelerOpts, *args):
         background, REQUEST, write = args
         if background:
 #            log.info('queued job: %s', " ".join(zenmodelerCmd))
-            result = self.dmd.JobManager.addJob(ShellCommandJob,zenmodelerCmd)
-        else: result = executeCommand(zenmodelerCmd, REQUEST, write)
+            if 'SubprocessJob' in locals():
+                log.info('queued job: %s', " ".join(zenmodelerCmd))
+                result = self.dmd.JobManager.addJob(SubprocessJob,
+                    description="Run zenmodeler %s" % ' '.join(zenmodelerOpts),
+                    args=(zenmodelerCmd,))
+            else:
+                result = self.dmd.JobManager.addJob(ShellCommandJob,zenmodelerCmd)
+        else:
+            result = executeCommand(zenmodelerCmd, REQUEST, write)
     else:
         result = executeCommand(zenmodelerCmd, args[0])
     return result
 
 @monkeypatch('Products.ZenModel.PerformanceConf.PerformanceConf')
 def _executeZenDiscCommand(self, deviceName, devicePath= "/Discovered", 
-                               performanceMonitor="localhost",
-                               background=False, REQUEST=None):
+                               performanceMonitor="localhost", *args):
     """
     Execute zendisc on the new device and return result
 
@@ -269,19 +280,33 @@ def _executeZenDiscCommand(self, deviceName, devicePath= "/Discovered",
     @return:
     @rtype:
     """
+    if len(args) == 3:
+        productionState, background, REQUEST = args
+    else:
+        background,REQUEST = args
+
     zendiscCmd = self._getZenDiscCommand(deviceName, devicePath,
                                              performanceMonitor, REQUEST)
     if background:
 #        log.info('queued job: %s', " ".join(zendiscCmd))
-        result = self.dmd.JobManager.addJob(ShellCommandJob,
-                                                zendiscCmd)
+        if 'SubprocessJob' in globals():
+            result = self.dmd.JobManager.addJob(SubprocessJob,
+                description="Discover and model device %s" % deviceName,
+                args=(zendiscCmd,))
+        else:
+            result = self.dmd.JobManager.addJob(ShellCommandJob,
+                                                    zendiscCmd)
     else:
         result = executeCommand(zendiscCmd, REQUEST)
     return result
 
 @monkeypatch('Products.ZenModel.PerformanceConf.PerformanceConf')
 def _getZenDiscCommand(self, deviceName, devicePath,
-                           performanceMonitor, REQUEST=None):
+                           performanceMonitor, *args):
+    if len(args) == 2:
+        productionState, REQUEST = args
+    else:
+        REQUEST = args
 
     zm = binPath('zendisc')
     zendiscCmd = [zm]
